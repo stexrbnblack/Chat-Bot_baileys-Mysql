@@ -4,6 +4,11 @@ const QRPortalWeb = require('@bot-whatsapp/portal')
 const BaileysProvider = require('@bot-whatsapp/provider/baileys')
 const MySQLAdapter = require('@bot-whatsapp/database/mysql')
 
+const { enviarMail } = require('./sendEmail')
+const { variable_step, pacientDatas, UpdateStep, cellUsedInChat, saveTypeDocument, saveIdDocument, saveName, saveEmail, saveCellPatient, saveTypeExam, saveJpgDoc, saveJpgAut, saveJpgHiCli, saveJpgExam } = require('./dataBase')
+const { mediaMessageSHA256B64 } = require('@adiwajshing/baileys')
+
+
 require("dotenv").config()
 /**
  * Declaramos las conexiones de MySQL
@@ -26,21 +31,85 @@ const MYSQL_DB_PORT = process.env.MYSQL_DB_PORT
  * Primero declaras los submenus 1.1 y 2.1, luego el 1 y 2 y al final el principal.
  */
 
-const flowCliHist = addKeyword('').addAnswer(['Por favor *Tomar una Foto a la Historia Clínica* antes mencionado'],
-    // saveJpgHiCli(media, resp),               // Guarda en la DB la imagen del Historia Clínica (Clinic Histpry)) 'jpgHiCli
-    null,
-    null,
-    // [flowExam]
+const flowFinalEmail = addKeyword(['']).addAnswer(['Fin'],
+    { capture: true },
+
+    async (ctx) => {
+
+        let jpgHiCli = ctx.body
+        // saveJpgHiCli(media, from),               // Guarda en la DB la imagen del Historia Clínica (Clinic Histpry)) 'jpgHiCli
+        console.log(`Foto autorizacion: *${jpgHiCli}*`)
+    },
+
+    // [flowFinalEmail]
 )
 
-const flowImgOrd = addKeyword('').addAnswer(['Por favor *Tomar una Foto a la Autorización* antes mencionado'],
-    // saveJpgAut(media, resp),                  // Guarda en la DB la imagen de la Autorizacion (Photo Autory) 'jpgAut'    
-    null,
-    null,
+const flowCliHist = addKeyword(['', ' '])
+    .addAnswer(
+        ['Por favor *Tomar una Foto a la Historia Clínica* antes mencionado'],
+        { capture: true },
+
+        async (ctx) => {
+            let jpgHiCli = ctx.body
+            let from = ctx.from
+            saveJpgHiCli(jpgHiCli, from),               // Guarda en la DB la imagen del Historia Clínica (Clinic Histpry)) 'jpgHiCli
+                console.log(`Foto autorizacion: *${jpgHiCli}*`)
+
+            pacientDatas(from, async function (datas) {
+                console.log('[Array data-->]', datas)
+                const patientData = await datas
+
+                // Mensaje al usuario con sus datos como Nombre y Correo
+                addAnswer([`Sr./Sra. *${patientData.name}*, ah creado su cita exitosamente: validaremos su infomacion y en breve se le notificara al correo asignado ${patientData.email}.`])
+                addAnswer([`Validaremos su información y en 24 horas se le notificará al correo asignado`])
+
+                // enviarMail(from)                        // Usa el numero del usuario en el chat para obtener sus datos y enviar un correo con sus datos para agendar la cita medica
+
+                addAnswer(
+                    [
+                        '*Nota:* debe presentarse *30 minutos* antes de la hora de su cita para realizar el proceso de admisión. \n' +
+                        'En caso de no poder cumplir, por favor cancelar la cita con un mínimo de 2 horas de anticipación a los siguientes \n' +
+                        'números: 3176398945 – 3013712503. Comprenderá que ese espacio es vital para mí, porque puedo ayudar a otro usuario que lo necesite.'
+                    ]
+                )
+            })
+        },
+
+        // [flowFinalEmail]
+    )
+    .addAnswer(
+        [`Probando el consecutivo de los datos ${pacientDatas.name}`]
+    )
+
+const flowImgAut = addKeyword(['']).addAnswer(['Por favor *Tomar una Foto a la Autorización* antes mencionado'],
+    { capture: true },
+
+    async (ctx) => {
+
+        let jpgAut = ctx.body
+        let from = ctx.from
+        saveJpgAut(jpgAut, from)                  // Guarda en la DB la imagen de la Autorizacion (Photo Autory) 'jpgAut'    
+        console.log(`Foto autorizacion: *${jpgAut}*`)
+    },
+
     [flowCliHist]
 )
 
-const flowExam = addKeyword(['',' ']).addAnswer('`Sr./Sra. {name}, tenemos para ti una forma más fácil de gestionar tu solicitud, \n `' +
+const flowImgOrd = addKeyword(['']).addAnswer(['Por favor *Tomar una Foto a la Orden medica* antes mencionado'],
+    { capture: true },
+
+    async (ctx) => {
+
+        let jpgExam = ctx.body
+        let from = ctx.from
+        saveJpgExam(jpgExam, from)                 // Guarda en la DB la imagen del tipo de Examen (Photo Exam Typr) 'jpgExam' 
+        console.log(`Foto autorizacion: *${jpgExam}*`)
+    },
+
+    [flowImgAut]
+)
+
+const flowExam = addKeyword(['', ' ']).addAnswer('Tenemos para ti una forma más fácil de gestionar tu solicitud, \n' +
     'en el siguiente link: https://rmn.com.co/agendamiento/')
     .addAnswer('De lo contrario selecciona la opción que deseas realizar ver opciones: ')
     .addAnswer([
@@ -59,9 +128,35 @@ const flowExam = addKeyword(['',' ']).addAnswer('`Sr./Sra. {name}, tenemos para 
         '*13. Ecocardiogramas*',
         '*14. Consulta por Cardiología*'
     ],
-        // saveTypeExam(addKeyword, addAnswer),                 // Guarda en la DB el tipo de Examen (Exam Typr) 'typeExam' 
-        null,
-        null,
+        { capture: true },
+
+        async (ctx) => {
+            let msg = ctx.body
+            examValoracion(msg)                     // varia ble que toma el nombre del tipo de examen con el switch
+
+            function examValoracion() {
+                switch (msg) {
+                    case '1': return msg = 'Radiología simple'
+                    case '2': return msg = 'Ecografías'
+                    case '3': return msg = 'Densitometrías'
+                    case '4': return msg = 'Tomografías'
+                    case '5': return msg = 'Resonancias'
+                    case '6': return msg = 'Mamografías'
+                    case '7': return msg = 'Electrocardiogramas'
+                    case '8': return msg = 'Monitoreo ambulatorio de presión arterial'
+                    case '9': return msg = 'Holter dinámico en 24 horas'
+                    case '10': return msg = 'Estudios bajo sedación'
+                    case '11': return msg = 'Biopsias'
+                    case '12': return msg = 'Pruebas de esfuerzos'
+                    case '13': return msg = 'Ecocardiogramas'
+                    case '14': return msg = 'Consulta por Cardiología'
+                    default: break
+                }
+            }
+
+            saveTypeExam(msg, cxt.from),                 // Guarda en la DB el tipo de Examen (Exam Typr) 'typeExam'
+                console.log(`Estupendo *${msg}*! te dejo el resumen de tu formulario`)
+        },
         [flowImgOrd]
     )
 
@@ -71,14 +166,11 @@ const flowCell = addKeyword([' ', ''])
         { capture: true },
 
         async (ctx) => {
-            
-            let cell = ctx.body
 
-            console.log(`Estupendo *${namePatient}*! te dejo el resumen de tu formulario
-            \n- Nombre y apellidos: *${namePatient}*
-            \n- ID: *${idDoc}*
-            \n- Telefono: *${cell}*
-            \n- Correo: *${email}*`)
+            let cell = ctx.body
+            console.log(`Telefono: *${cell}*`)
+            saveCellPatient(cell, ctx.from)               // Guarda en la DB el Numero del cell del usuario (CellPatient) 'cellPatient' 
+
         },
         [flowExam]
     )
@@ -91,8 +183,9 @@ const flowCorreo = addKeyword([' ', ''])
         async (ctx) => {
 
             let email = ctx.body
-
             console.log(`Email: *${email}*`)
+            saveEmail(email, ctx.from)                   // Guarda en la DB el correo (email) 'email' 
+
         },
         [flowCell]
     )
@@ -107,30 +200,68 @@ const flowFormPatient = addKeyword([' ', ''])
 
             namePatient = ctx.body
             console.log(`Nombre: *${namePatient}*`)
+            saveName(namePatient, ctx.from)                    // Guarda en la DB el nombre typing por el usuario (name) 'name'
+
         },
         [flowCorreo]
     )
 
+const flowImgOtro = addKeyword(['', ' ']).addAnswer(
+    ['Por favor *Tomar una Foto al Documento de Identidad* antes mencionado'],
+    { capture: true },
+
+    async (ctx) => {
+
+        let JpgDoc = ctx.body
+        console.log('Img otro: ', JpgDoc)
+        console.log(`otor: *${JpgDoc}*`)
+        saveJpgDoc(JpgDoc, ctx.from)                  // Gaurda en la DB la img o foto tomada del (Doc Id) 'JpgDoc'
+
+    },
+    [flowFormPatient]
+)
+
+const flowIdOtro = addKeyword(['', ' ']).addAnswer(
+    ['Digite el Documento anteriormente mencionado'],
+    { capture: true },
+
+    async (ctx) => {
+
+        let idDoc = ctx.body
+        console.log('NUMERO DE OTRO: ', idDoc)
+        console.log(`numero otro: *${idDoc}*`)
+        saveIdDocument(idDoc, ctx.from)              // Guarda en la DB el Numero del ID (Number Id) 'IdDocument' 
+
+    },
+    [flowImgOtro]
+)
+
 const flowFormOtro = addKeyword(['4', 'otro'])
     .addAnswer(
-        ['Digite el Tipo de Documento de ciudadanía'],
+        ['Expesifique tipo de documento a ingresar'],
         { capture: true },
 
         (ctx) => {
 
             let TypeDocument = ctx.body
             console.log('typo de doc: ', TypeDocument)
-            console.log(`CC: *${TypeDocument}*`)
-        }
-    ).addAnswer(
-        ['Digite el Documento anteriormente mencionado'],
+            console.log(`otro: *${TypeDocument}*`)
+            saveTypeDocument(TypeDocument, ctx.from)           // Guarda en la DB el tipo de documento (Document Type) 'typeDocument' : ,
+        },
+        [flowIdOtro]
+    )
+
+const flowImgTI = addKeyword(['', ' '])
+    .addAnswer(
+        ['Por favor *Tomar una Foto al Documento de Identidad* antes mencionado'],
         { capture: true },
 
         async (ctx) => {
+            let JpgDoc = ctx.body
+            console.log('img CC: ', JpgDoc)
+            // console.log(`CC: *${idDoc}*`)
+            saveJpgDoc(JpgDoc, ctx.from)                  // Gaurda en la DB la img o foto tomada del (Doc Id) 'JpgDoc'
 
-            let idDoc = ctx.body
-            console.log('NUMERO DE CC: ', idDoc)
-            console.log(`CC: *${idDoc}*`)
         },
         [flowFormPatient]
     )
@@ -145,6 +276,23 @@ const flowFormTI = addKeyword(['3', 'ti'])
             let idDoc = ctx.body
             console.log('NUMERO DE TI: ', idDoc)
             console.log(`TI: *${idDoc}*`)
+            saveIdDocument(idDoc, ctx.from)              // Guarda en la DB el Numero del ID (Number Id) 'IdDocument' 
+
+        },
+        [flowImgTI]
+    )
+
+const flowImgCE = addKeyword(['', ' '])
+    .addAnswer(
+        ['Por favor *Tomar una Foto al Documento de Identidad* antes mencionado'],
+        { capture: true },
+
+        async (ctx) => {
+            let JpgDoc = ctx.body
+            console.log('img CE: ', JpgDoc)
+            // console.log(`CC: *${idDoc}*`)
+            saveJpgDoc(JpgDoc, ctx.from)                  // Gaurda en la DB la img o foto tomada del (Doc Id) 'JpgDoc'
+
         },
         [flowFormPatient]
     )
@@ -159,6 +307,22 @@ const flowFormCE = addKeyword(['2', 'ce'])
             let idDoc = ctx.body
             console.log('NUMERO DE CE: ', idDoc)
             console.log(`CE: *${idDoc}*`)
+            saveIdDocument(idDoc, ctx.from)              // Guarda en la DB el Numero del ID (Number Id) 'IdDocument' 
+
+        },
+        [flowImgCE]
+    )
+
+const flowImgCC = addKeyword(['', ' '])
+    .addAnswer(
+        ['Por favor *Tomar una Foto al Documento de Identidad* antes mencionado'],
+        { capture: true },
+
+        async (ctx) => {
+            let JpgDoc = ctx.body
+            console.log('img CC: ', JpgDoc, ctx.refSerialize)
+            saveJpgDoc(ctx.refSerialize, ctx.from)                  // Gaurda en la DB la img o foto tomada del (Doc Id) 'JpgDoc'
+            // console.log(`CC: *${idDoc}*`)
         },
         [flowFormPatient]
     )
@@ -170,10 +334,12 @@ const flowFormCC = addKeyword(['1', 'cc'])
 
         async (ctx) => {
             let idDoc = ctx.body
-            console.log('NUMERO DE CC: ', idDoc)
+            console.log('NUMERO DE CC: ', idDoc, )
+            await saveIdDocument(idDoc, ctx.from)              // Guarda en la DB el Numero del ID (Number Id) 'IdDocument' 
+
             // console.log(`CC: *${idDoc}*`)
         },
-        [flowFormPatient]
+        [flowImgCC]
     )
 
 const flowAcep2 = addKeyword(['1', 'si', 'acepto']).addAnswer(
@@ -190,19 +356,18 @@ const flowAcep2 = addKeyword(['1', 'si', 'acepto']).addAnswer(
         let TypeDocument = ctx.body
 
         if (TypeDocument == '1') {
-            TypeDocument = 'CC'
+            TypeDocument = 'CC', console.log('NUMERO DE CC: ', TypeDocument)
         } else if (TypeDocument == '2') {
-            TypeDocument = 'CE'
-        }
-        else if (TypeDocument == '3') {
-            TypeDocument = 'TI'
-        }
-        else if (TypeDocument == '4') { TypeDocument = 'TI' }
+            TypeDocument = 'CE', console.log('NUMERO DE CC: ', TypeDocument)
+        } else if (TypeDocument == '3') {
+            TypeDocument = 'TI', console.log('NUMERO DE CC: ', TypeDocument)
+        } else if (TypeDocument == '4') { TypeDocument = 'Otro', console.log('NUMERO DE CC: ', TypeDocument) }
+
+        await saveTypeDocument(TypeDocument, ctx.from)           // Guarda en la DB el tipo de documento (Document Type) 'typeDocument' : ,
 
         // await flowDynamic(`Encantado tipo de documento *${TypeDocument}*, ctx: ${ctx.from}`)
     },
     [flowFormCC, flowFormCE, flowFormTI, flowFormOtro]
-    //  saveTypeDocument(addKeyword, addAnswer)           // Guarda en la DB el tipo de documento (Document Type) 'typeDocument' : ,
 )
 
 const flowResult = addKeyword(['2', 'descargar', 'resultados']).addAnswer(
@@ -222,8 +387,13 @@ const flowAddCit = addKeyword(['1', 'si', 'cita']).addAnswer(
         '*1. Si Acepto*',
         '*2. No Acepto*'
     ],
-    null,
-    null,
+    { capture: true },
+
+    async (ctx) => {
+        console.log('cell-->: ', ctx.from)
+
+        await cellUsedInChat(ctx.from)                        // Guarda en la BD el numero que es usado para contactar el chatBot.
+    },
     [flowAcep2]
 )
 
@@ -239,8 +409,21 @@ const flowAcep = addKeyword(['1', 'si', 'acepto']).addAnswer(
     // (ctx) => {
     // console.log('addKeyword: ', addKeyword, '\n' + 'addAnswer: ', addKeyword.addAnswer)
     // console.log('ctx.body: ', ctx.body, '\n' + 'ctxbody: ', ctx)},
-    null,
-    null,
+    { capture: true },
+
+    async (ctx) => {
+        console.log('cell-->: ', ctx.from)
+        console.log('ctx-->: ', ctx)    
+        console.log(' ')  
+        console.log('ctx-->: ', ctx.message.messageContextInfo.deviceListMetadata) 
+        console.log(' ')  
+        console.log('ctx.message.imageMessage.fileSha256-->: ', ctx.message.imageMessage.fileSha256)
+        console.log(' ')
+        console.log('ctx.message.imageMessage.fileSha256-->: ', ctx.message.imageMessage.fileEncSha256)
+        console.log(' ')
+        console.log('ctx.message.imageMessage.fileSha256-->: ', ctx.message.imageMessage.jpegThumbnail)
+        await cellUsedInChat(ctx.from)                        // Guarda en la BD el numero que es usado para contactar el chatBot.
+    },
     [flowAddCit, flowResult]
 )
 
@@ -267,8 +450,45 @@ const flowPrincipal = addKeyword(['hola', 'buenas', 'noche', 'dias', 'informacio
             '👉 *1. Si Acepto*',
             '👉 *2. No Acepto*'
         ],
-        null,
-        null,
+        { capture: true },
+
+        async (ctx) => {
+            console.log('cell-->: ', ctx.from)
+
+            console.log('ctx-->: ', ctx)    
+            console.log(' ')  
+            console.log('message.imageMessage.scanLengths-->: ', ctx.message.imageMessage.scanLengths)
+            console.log(' ') 
+            console.log('message.imageMessage.fileSha256-->: ', ctx.message.imageMessage.fileSha256)
+            console.log(' ')  
+            console.log('message.imageMessage.fileLength-->: ', ctx.message.imageMessage.fileLength.low)
+            console.log(' ')  
+            console.log('message.imageMessage.mediaKey-->: ', ctx.message.imageMessage.mediaKey)
+            console.log(' ')  
+            console.log('message.imageMessage.fileEncSha256-->: ', ctx.message.imageMessage.fileEncSha256)
+            console.log(' ')  
+            console.log('message.imageMessage.mediaKeyTimestamp-->: ', ctx.message.imageMessage.mediaKeyTimestamp.low)
+            console.log(' ') 
+            console.log('message.imageMessage.scansSidecar-->: ', ctx.message.imageMessage.scansSidecar)
+            console.log(' ')  
+            console.log('message.imageMessage.midQualityFileSha256-->: ', ctx.message.imageMessage.midQualityFileSha256)
+            console.log(' ')  
+            console.log('messageContextInfo.MessageContextInfo.deviceListMetadata-->: ', ctx.message.messageContextInfo.deviceListMetadata) 
+            console.log(' ')  
+            console.log('ctx.mediaMessageSHA256B64-->: ', ctx.mediaMessageSHA256B64) 
+            console.log(' ')
+            // console.log('media-->: ', MediaElementAudioSourceNode) 
+            console.log(' ')
+            // console.log('media-->: ', media) 
+            console.log(' ')
+            console.log('MediaMetadata-->: ', ctx.data) 
+            console.log('mediaMessageSHA256B64-->: ', ctx.mediaMessageSHA256B64)
+            await cellUsedInChat(ctx.from)                        // Guarda en la BD el numero que es usado para contactar el chatBot.
+
+            await saveJpgExam(ctx.body, ctx.from)
+
+
+        },
         [flowAcep]
     )
 
