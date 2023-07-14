@@ -1,7 +1,7 @@
 const { createBot, createProvider, createFlow, addKeyword } = require('@bot-whatsapp/bot')
 
 const QRPortalWeb = require('@bot-whatsapp/portal')
-const WebWhatsappProvider = require('@bot-whatsapp/provider/web-whatsapp')
+const BaileysProvider = require('@bot-whatsapp/provider/baileys')
 const MySQLAdapter = require('@bot-whatsapp/database/mysql')
 
 /**
